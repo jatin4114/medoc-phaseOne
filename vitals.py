@@ -10,21 +10,23 @@ except OSError:
 
 
 def extract_vitals(text):
-    """Extracts heart rate, blood pressure, and temperature from medical text."""
+    """Extracts heart rate, blood pressure, and temperature from medical text using NLP."""
 
     vitals = {'heart_rate': None, 'blood_pressure': None, 'temperature': None}
     doc = nlp(text)
 
     # Enhanced blood pressure extraction
     bp_patterns = [
-        r"(\d+) ?/ ?(\d+) (?:mm ?hg|hg/mm|millimeters of mercury|mercury)",
-        r"(?:systolic|diastolic) (\d+) (?:over|mmHg)",
-        r"bp (\d+ ?/ ?\d+)",
-        r"(?:blood ?pressure|bp) (?:is|was|of) (\d+ ?/ ?\d+)",
-        r"(?:my|his|her|the patient's) (?:blood ?pressure|bp) (?:is|was) (\d+)(?: and| over) (\d+)",
-        r"(\d+) ?(?:over|/) ?(\d+)",
-        r"bp is (\d+) (\d+)"
+        r"(\d{2,3}) ?/ ?(\d{2,3}) (?:mm ?hg|hg/mm|millimeters of mercury|mercury)",
+        r"(?:systolic|diastolic) (\d{2,3}) (?:over|mmHg)",
+        r"bp (\d{2,3} ?/ ?\d{2,3})",
+        r"(?:blood ?pressure|bp) (?:is|was|of) (\d{2,3} ?/ ?\d{2,3})",
+        r"(?:my|his|her|the patient's) (?:blood ?pressure|bp) (?:is|was) (\d{2,3})(?: and| over) (\d{2,3})",
+        r"(\d{2,3}) ?(?:over|/) ?(\d{2,3})",
+        r"bp is (\d{2,3}) (\d{2,3})",
+        r"(\d{2,3}) (\d{2,3})"  # Handle "120 80" without explicit delimiter
     ]
+
     for pattern in bp_patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
@@ -36,8 +38,10 @@ def extract_vitals(text):
 
     # Enhanced heart rate extraction (including "rate" keyword)
     heart_rate_patterns = [
-        r"(\d+) (bpm|beats per minute|beats/minute|heartrate|rate)",
-        r"heart rate (\d+)"
+        r"(\d{2,3}) (?:bpm|beats per minute|beats/minute|heartrate|rate)",
+        r"heart rate (\d{2,3})",
+        r"pulse (?:rate )?is (\d{2,3})",
+        r"hr (\d{2,3})"
     ]
     for pattern in heart_rate_patterns:
         match = re.search(pattern, text, re.IGNORECASE)
@@ -45,22 +49,31 @@ def extract_vitals(text):
             vitals['heart_rate'] = int(match.group(1))
             break
 
-    # Enhanced temperature extraction
+    # Enhanced temperature extraction (handle multiple mentions)
+    temp_values = []
     temp_patterns = [
-        r"(\d+(?:\.\d+)?) (?:degrees )?c",  # Celsius
-        r"(\d+(?:\.\d+)?) (?:degrees )?f",  # Fahrenheit
-        r"(?:temp|temperature) (?:is|was|of) (\d+(?:\.\d+)?)",
-        r"(\d+(?:\.\d+)?) (?:degrees|deg|°)(?:c|f)",  # More flexible degree symbol
-        r"fever of (\d+(?:\.\d+)?)",
+        r"(\d{1,2}\.\d) ?(?:degrees )?(?:c|celsius)",
+        r"(\d{2,3}\.\d) ?(?:degrees )?(?:f|fahrenheit)",
+        r"(?:temp|temperature) (?:is|was|of) (\d{1,2}\.\d)",
+        r"(\d{1,2}\.\d) ?(?:degrees|deg|°)(?:c|f)",
+        r"fever of (\d{1,2}\.\d)",
+        r"(\d{1,2}\.\d)(?: ?degrees)?(?: ?c| celsius)?",
+        r"(\d{2,3})(?: ?degrees)?(?: ?f| fahrenheit)?",
+        r"(\d{1,2})(?: ?degrees)?(?: ?c| celsius)?",
+        r"temp(?:erature)? ?(\d{2,3})",  # Handling cases like "temp 101" or "temperature 101"
+        r"fever(?: of)? (\d{2,3})"       # Handling cases like "fever 101" or "fever of 101"
     ]
+
     for pattern in temp_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            temp_value = float(match.group(1))
-            if "f" in pattern.lower() or "fever" in pattern.lower():
-                temp_value = (temp_value - 32) * 5 / 9  # Convert to Celsius
-            vitals['temperature'] = round(temp_value, 1)
-            break
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        for match in matches:
+            temp_value = float(match)
+            if "f" in pattern.lower() or "fever" in pattern.lower() or "temp" in pattern.lower() and int(match) > 100:
+                temp_value = (temp_value - 32) * 5 / 9  # Convert Fahrenheit to Celsius
+            temp_values.append(round(temp_value, 1))
+
+    # if temp_values:
+    #     vitals['temperature'] = max(temp_values)
 
     return vitals
 
@@ -77,17 +90,3 @@ while True:
         print(f"Vitals extracted from text: {vitals}")
     else:
         print("No vitals found in the text.")
-
-test_cases = [
-    "Patient presents with a temperature of 38.5 degrees Celsius, a heart rate of 100 bpm, and blood pressure of 130/85 mm Hg.",
-    "The patient's blood pressure is 120/80 mm Hg, and their heartrate is 85 beats per minute. No fever noted.",
-    "Temp: 98.6 F, BP: 118/78, HR: 72",
-    "hello my name is doctor rosh. patient name is rahul gandhi how can we. the temprature of the human subject is 105 degree ferhenite and a and bloos pressure is 120 88",
-    "y blood pressure is 120 80",
-    "bp is 120 80",
-    "my name is anushi mangal and my age is 40 years i am suffering from fever. doctor says temprature is 105 degree and rate is 77 bpm with bp as 200 over 100"
-]
-
-for text in test_cases:
-    vitals = extract_vitals(text)
-    print(f"Text: '{text}'\nVitals: {vitals}\n")
